@@ -1,0 +1,1437 @@
+/**
+ * styles.css — Стили Telegram Mini App «Beauty Catalog»
+ *
+ * Архитектура:
+ *   1. CSS-переменные (Telegram + бренд)
+ *   2. Сброс и база
+ *   3. Лейаут приложения
+ *   4. Компоненты навигации
+ *   5. Анимации переходов
+ *   6. Карточки услуг
+ *   7. Экраны (специфичные стили)
+ *   8. Кнопки
+ *   9. Skeleton-загрузка
+ *  10. Утилиты
+ *
+ * Все цвета — только через var(--tg-theme-*) или --accent.
+ * Хардкод цветов запрещён (кроме брендового --accent).
+ */
+
+/* ────────────────────────────────────────────────────────────
+   1. CSS-ПЕРЕМЕННЫЕ
+──────────────────────────────────────────────────────────── */
+
+:root {
+  /* Telegram-переменные с fallback для браузерного превью */
+  --tg-bg:          var(--tg-theme-bg-color,           #ffffff);
+  --tg-text:        var(--tg-theme-text-color,         #1a1a1a);
+  --tg-hint:        var(--tg-theme-hint-color,         #8C8C8C);
+  --tg-secondary:   var(--tg-theme-secondary-bg-color, #f5f5f5);
+  --tg-btn:         var(--tg-theme-button-color,       #2AABEE);
+  --tg-btn-text:    var(--tg-theme-button-text-color,  #ffffff);
+  --tg-link:        var(--tg-theme-link-color,         #2AABEE);
+
+  /* Единственный брендовый цвет — нежно-золотой для бьюти */
+  --accent:         #C9A96E;
+  --accent-light:   #F0E4CC;
+  --accent-dim:     rgba(201, 169, 110, 0.15);
+
+  /* Статусные цвета */
+  --status-green:   #27AE60;
+  --status-orange:  #E67E22;
+  --status-red:     #E74C3C;
+  --status-gray:    #8C8C8C;
+
+  /* Системные */
+  --radius-sm:      10px;
+  --radius-md:      16px;
+  --radius-lg:      20px;
+  --shadow:         0 2px 16px rgba(0,0,0,0.08);
+  --shadow-card:    0 4px 20px rgba(0,0,0,0.10);
+
+  /* Высота элементов навигации */
+  --nav-height:     64px;
+  --header-height:  60px;
+
+  /* Safe area для iPhone */
+  --safe-top:       env(safe-area-inset-top,    0px);
+  --safe-bottom:    env(safe-area-inset-bottom, 0px);
+
+  /* Высота вьюпорта (обновляется через JS при открытии клавиатуры) */
+  --viewport-height: 100dvh;
+}
+
+/* ────────────────────────────────────────────────────────────
+   2. СБРОС И БАЗА
+──────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent; /* Убираем синюю подсветку на Android */
+}
+
+html {
+  -webkit-text-size-adjust: 100%; /* Фикс для iOS */
+  overscroll-behavior-y: none;    /* Убираем резинку при скролле */
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  overflow: hidden;
+  height: var(--viewport-height);
+  max-width: 430px;
+  margin: 0 auto;
+}
+
+/* Отключаем выделение текста — приложение, не сайт */
+* { user-select: none; -webkit-user-select: none; }
+input, textarea { user-select: text; -webkit-user-select: text; }
+
+/* ────────────────────────────────────────────────────────────
+   3. ЛЕЙАУТ ПРИЛОЖЕНИЯ
+──────────────────────────────────────────────────────────── */
+
+#app {
+  position: relative;
+  height: var(--viewport-height);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Контейнер активного экрана */
+#view {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Обёртка каждого экрана — занимает весь контейнер */
+.screen {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--tg-bg);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Отступ снизу чтобы контент не прятался за навигацией */
+.screen-content {
+  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
+}
+
+/* Экранам воронки (Э2-Э4) — нет нижней навигации */
+.screen-funnel .screen-content {
+  padding-bottom: calc(var(--safe-bottom) + 80px); /* место под MainButton */
+}
+
+/* ────────────────────────────────────────────────────────────
+   4. НИЖНЯЯ НАВИГАЦИЯ
+──────────────────────────────────────────────────────────── */
+
+#bottom-nav {
+  height: calc(var(--nav-height) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: var(--tg-bg);
+  border-top: 1px solid rgba(0,0,0,0.08);
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 100;
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--tg-hint);
+  font-size: 11px;
+  font-weight: 500;
+  transition: color 0.2s;
+  min-height: 44px;
+}
+
+.nav-item.active {
+  color: var(--accent);
+}
+
+.nav-item__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* Скрываем нижнюю навигацию в воронке */
+#bottom-nav.hidden {
+  display: none;
+}
+
+/* ────────────────────────────────────────────────────────────
+   5. АНИМАЦИИ ПЕРЕХОДОВ
+──────────────────────────────────────────────────────────── */
+
+/* Переход вперёд — новый экран вылетает справа */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Переход назад — новый экран вылетает слева */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Уходящий экран влево (при навигации вперёд) */
+@keyframes slideOutLeft {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-30%); opacity: 0; }
+}
+
+/* Уходящий экран вправо (при навигации назад) */
+@keyframes slideOutRight {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
+.screen-enter-forward {
+  animation: slideInRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.screen-enter-back {
+  animation: slideInLeft 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.screen-exit-forward {
+  animation: slideOutLeft 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.screen-exit-back {
+  animation: slideOutRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Фейд для Success-экрана */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.screen-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+/* ────────────────────────────────────────────────────────────
+   6. ШАПКА КАТАЛОГА
+──────────────────────────────────────────────────────────── */
+
+.master-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  background: var(--tg-bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.master-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(201, 169, 110, 0.3);
+}
+
+.master-info__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tg-text);
+}
+
+.master-info__sub {
+  font-size: 13px;
+  color: var(--tg-hint);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rating-star { color: #FFB800; }
+
+/* ────────────────────────────────────────────────────────────
+   7. КАТЕГОРИИ (PILLS)
+──────────────────────────────────────────────────────────── */
+
+.categories {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--tg-bg);
+  position: sticky;
+  top: 68px;  /* высота шапки */
+  z-index: 9;
+}
+
+.categories::-webkit-scrollbar { display: none; }
+
+.category-pill {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 20px;
+  border: 1.5px solid rgba(0,0,0,0.10);
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.category-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ────────────────────────────────────────────────────────────
+   8. КАТАЛОГ УСЛУГ — компактный список
+──────────────────────────────────────────────────────────── */
+
+/* Портфолио — горизонтальная лента фото */
+.portfolio-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 16px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.portfolio-row::-webkit-scrollbar { display: none; }
+
+.portfolio-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+/* Секция услуг — iOS-стиль */
+.services-section-wrap {
+  padding: 0 12px 16px;
+}
+
+.services-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tg-hint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 4px 8px;
+}
+
+.services-section {
+  background: var(--tg-secondary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Компактная строка услуги */
+.service-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.service-item:last-child {
+  border-bottom: none;
+}
+
+.service-item:active {
+  background: rgba(0,0,0,0.05);
+}
+
+.service-item--unavailable {
+  opacity: 0.5;
+}
+
+/* Иконка услуги */
+.service-item__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+/* Название и длительность */
+.service-item__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.service-item__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tg-text);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.service-item__meta {
+  font-size: 12px;
+  color: var(--tg-hint);
+}
+
+/* Цена и стрелка */
+.service-item__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.service-item__price {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--tg-text);
+}
+
+.service-item__chevron {
+  color: var(--tg-hint);
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* Пустое состояние */
+.services-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--tg-hint);
+  font-size: 15px;
+}
+
+/* ────────────────────────────────────────────────────────────
+   9. ЭКРАН 2: ДЕТАЛИ УСЛУГИ
+──────────────────────────────────────────────────────────── */
+
+.service-detail { }
+
+/* Карусель фото */
+.carousel {
+  width: 100%;
+  height: 260px;
+  overflow: hidden;
+  position: relative;
+}
+
+.carousel__track {
+  display: flex;
+  height: 100%;
+  transition: transform 0.3s ease;
+  will-change: transform;
+}
+
+.carousel__slide {
+  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 80px;
+}
+
+/* Точки-индикаторы */
+.carousel__dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 0 0;
+}
+
+.carousel__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tg-hint);
+  opacity: 0.4;
+  transition: all 0.2s;
+}
+
+.carousel__dot.active {
+  background: var(--accent);
+  opacity: 1;
+  width: 18px;
+  border-radius: 3px;
+}
+
+/* Тело детальной страницы */
+.detail-body {
+  padding: 20px 16px 100px; /* место под MainButton */
+}
+
+.detail-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--tg-text);
+  margin-bottom: 10px;
+  line-height: 1.3;
+}
+
+.detail-desc {
+  font-size: 15px;
+  color: var(--tg-text);
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+
+/* Бейджи длительности и цены */
+.detail-badges {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.badge--duration {
+  background: var(--tg-secondary);
+  color: var(--tg-hint);
+}
+
+.badge--price {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Разделитель */
+.divider {
+  height: 1px;
+  background: rgba(0,0,0,0.08);
+  margin: 16px 0;
+}
+
+.detail-policy {
+  font-size: 13px;
+  color: var(--tg-hint);
+  line-height: 1.5;
+}
+
+.detail-policy__title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--tg-hint);
+}
+
+/* ────────────────────────────────────────────────────────────
+   10. ЭКРАН 3: ВЫБОР ДАТЫ И ВРЕМЕНИ
+──────────────────────────────────────────────────────────── */
+
+.booking-date { }
+
+.booking-header {
+  padding: 16px 16px 0;
+  position: sticky;
+  top: 0;
+  background: var(--tg-bg);
+  z-index: 10;
+}
+
+.booking-header__service {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tg-text);
+  margin-bottom: 4px;
+}
+
+.booking-header__label {
+  font-size: 13px;
+  color: var(--tg-hint);
+  margin-bottom: 14px;
+}
+
+/* Горизонтальный скролл дней */
+.date-picker {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  position: sticky;
+  top: 72px;
+  background: var(--tg-bg);
+  z-index: 9;
+}
+
+.date-picker::-webkit-scrollbar { display: none; }
+
+.day-pill {
+  flex-shrink: 0;
+  width: 52px;
+  height: 68px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(0,0,0,0.10);
+  background: var(--tg-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.day-pill:disabled,
+.day-pill.unavailable {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.day-pill.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.day-pill__name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tg-hint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.day-pill.selected .day-pill__name { color: rgba(255,255,255,0.8); }
+
+.day-pill__num {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--tg-text);
+}
+
+.day-pill.selected .day-pill__num { color: #fff; }
+
+/* Слоты времени */
+.slots-section {
+  padding: 18px 16px 100px;
+}
+
+.slots-section__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tg-hint);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.slot-btn {
+  height: 48px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(0,0,0,0.10);
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.slot-btn:disabled {
+  background: var(--tg-secondary);
+  color: var(--tg-hint);
+  border-color: transparent;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  font-weight: 400;
+}
+
+.slot-btn.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.slots-empty {
+  text-align: center;
+  padding: 32px 0;
+  color: var(--tg-hint);
+  font-size: 15px;
+}
+
+/* ────────────────────────────────────────────────────────────
+   11. ЭКРАН 4: ПОДТВЕРЖДЕНИЕ
+──────────────────────────────────────────────────────────── */
+
+.confirm-screen {
+  padding: 24px 16px 100px;
+}
+
+.confirm-title {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 24px;
+  color: var(--tg-text);
+}
+
+.confirm-card {
+  background: var(--tg-secondary);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.confirm-row:last-child { border-bottom: none; }
+
+.confirm-row__icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.confirm-row__label {
+  font-size: 13px;
+  color: var(--tg-hint);
+  margin-bottom: 2px;
+}
+
+.confirm-row__value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tg-text);
+}
+
+.confirm-policy {
+  font-size: 13px;
+  color: var(--tg-hint);
+  text-align: center;
+  line-height: 1.6;
+  padding: 0 8px;
+}
+
+/* ────────────────────────────────────────────────────────────
+   12. ЭКРАН 5: УСПЕХ
+──────────────────────────────────────────────────────────── */
+
+.success-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 32px;
+  min-height: 100%;
+}
+
+/* Анимация галочки */
+@keyframes checkPop {
+  0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(5deg); }
+  80%  { transform: scale(0.95); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.success-check {
+  width: 90px;
+  height: 90px;
+  background: linear-gradient(135deg, #27AE60, #2ECC71);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  margin-bottom: 28px;
+  animation: checkPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  box-shadow: 0 8px 24px rgba(39, 174, 96, 0.35);
+}
+
+.success-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--tg-text);
+  margin-bottom: 14px;
+}
+
+.success-info {
+  font-size: 17px;
+  color: var(--tg-text);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.success-sub {
+  font-size: 14px;
+  color: var(--tg-hint);
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.btn-secondary {
+  width: 100%;
+  height: 52px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--tg-btn);
+  background: #fff;
+  color: var(--tg-btn);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.btn-secondary:active {
+  opacity: 0.85;
+  transform: scale(0.99);
+}
+
+/* ────────────────────────────────────────────────────────────
+   13. ЭКРАН 6: МОИ ЗАПИСИ
+──────────────────────────────────────────────────────────── */
+
+.bookings-screen {
+  padding: 16px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--tg-hint);
+  margin-bottom: 12px;
+  margin-top: 20px;
+}
+
+.section-title:first-child { margin-top: 0; }
+
+.booking-card {
+  background: var(--tg-secondary);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 10px;
+}
+
+.booking-card__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tg-text);
+  margin-bottom: 4px;
+}
+
+.booking-card__date {
+  font-size: 14px;
+  color: var(--tg-hint);
+  margin-bottom: 10px;
+}
+
+.booking-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.status-badge--confirmed {
+  background: rgba(39, 174, 96, 0.12);
+  color: var(--status-green);
+}
+
+.status-badge--pending {
+  background: rgba(230, 126, 34, 0.12);
+  color: var(--status-orange);
+}
+
+.status-badge--done {
+  background: var(--tg-secondary);
+  color: var(--tg-hint);
+}
+
+.status-badge--cancelled {
+  background: rgba(231, 76, 60, 0.10);
+  color: var(--status-red);
+}
+
+.btn-outline {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(0,0,0,0.15);
+  background: transparent;
+  color: var(--tg-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.btn-outline:active {
+  background: var(--tg-secondary);
+}
+
+.btn-outline--danger {
+  border-color: rgba(231, 76, 60, 0.3);
+  color: var(--status-red);
+}
+
+.btn-outline--accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Пустое состояние */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 24px 40px;
+  text-align: center;
+}
+
+.empty-state__icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.empty-state__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tg-text);
+  margin-bottom: 8px;
+}
+
+.empty-state__text {
+  font-size: 15px;
+  color: var(--tg-hint);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+/* ────────────────────────────────────────────────────────────
+   14. ЭКРАН 7: О МАСТЕРЕ
+──────────────────────────────────────────────────────────── */
+
+.about-screen { }
+
+/* Hero-фото мастера */
+.master-hero {
+  width: 100%;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-light) 0%, #F8EDD4 100%);
+  font-size: 96px;
+  position: relative;
+  overflow: hidden;
+}
+
+.master-hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(to bottom, transparent, var(--tg-bg));
+}
+
+.about-body {
+  padding: 16px 16px 0;
+}
+
+.about-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--tg-text);
+  margin-bottom: 4px;
+}
+
+.about-title {
+  font-size: 15px;
+  color: var(--tg-hint);
+  margin-bottom: 16px;
+}
+
+/* Стрипы рейтинга */
+.about-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.stat-chip {
+  background: var(--tg-secondary);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  text-align: center;
+  flex: 1;
+}
+
+.stat-chip__value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--tg-text);
+}
+
+.stat-chip__label {
+  font-size: 12px;
+  color: var(--tg-hint);
+  margin-top: 2px;
+}
+
+.about-bio {
+  font-size: 15px;
+  color: var(--tg-text);
+  line-height: 1.65;
+  margin-bottom: 20px;
+}
+
+/* Инфо-строки (адрес, часы) */
+.info-list {
+  background: var(--tg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.info-row:last-child { border-bottom: none; }
+
+.info-row__icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.info-row__content { flex: 1; }
+
+.info-row__label {
+  font-size: 12px;
+  color: var(--tg-hint);
+  margin-bottom: 2px;
+}
+
+.info-row__value {
+  font-size: 15px;
+  color: var(--tg-text);
+  font-weight: 500;
+}
+
+.info-row__hours {
+  margin-top: 4px;
+}
+
+.hours-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--tg-text);
+  padding: 2px 0;
+}
+
+.hours-line span:first-child {
+  color: var(--tg-hint);
+}
+
+.link-btn {
+  font-size: 14px;
+  color: var(--tg-link);
+  cursor: pointer;
+  margin-top: 4px;
+  display: inline-block;
+  font-weight: 500;
+}
+
+.about-action {
+  margin: 8px 0 16px;
+}
+
+/* Fallback-кнопка для браузера (замена Telegram MainButton) */
+.page-cta-wrap {
+  padding: 12px 16px calc(12px + var(--safe-bottom));
+  background: var(--tg-bg);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+/* Кнопка «Написать мастеру» */
+.btn-primary {
+  width: 100%;
+  height: 52px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--tg-btn);
+  color: var(--tg-btn-text);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.btn-primary:active {
+  opacity: 0.85;
+  transform: scale(0.99);
+}
+
+/* ────────────────────────────────────────────────────────────
+   15. SKELETON ЗАГРУЗКА
+──────────────────────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--tg-secondary) 25%,
+    rgba(0,0,0,0.06) 50%,
+    var(--tg-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+}
+
+.skeleton-card {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--tg-secondary);
+  margin: 0 16px 14px;
+}
+
+.skeleton-photo {
+  width: 100%;
+  height: 200px;
+}
+
+.skeleton-body {
+  padding: 14px 16px;
+}
+
+.skeleton-line {
+  height: 16px;
+  margin-bottom: 10px;
+}
+
+.skeleton-line.w-60  { width: 60%; }
+.skeleton-line.w-40  { width: 40%; }
+.skeleton-line.w-100 { width: 100%; height: 48px; border-radius: 8px; }
+
+/* ────────────────────────────────────────────────────────────
+   16. УТИЛИТЫ
+──────────────────────────────────────────────────────────── */
+
+.text-hint  { color: var(--tg-hint); }
+.text-small { font-size: 13px; }
+.text-center { text-align: center; }
+
+.mt-8  { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mb-16 { margin-bottom: 16px; }
+
+/* ────────────────────────────────────────────────────────────
+   17. ОНБОРДИНГ — экран приветствия (первый запуск)
+──────────────────────────────────────────────────────────── */
+
+.onboarding-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 48px 24px calc(40px + var(--safe-bottom));
+  text-align: center;
+}
+
+.onboarding-emoji {
+  font-size: 72px;
+  line-height: 1;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.onboarding-greeting {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--tg-text);
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.onboarding-subtitle {
+  font-size: 16px;
+  color: var(--tg-hint);
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.onboarding-features {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 36px;
+  text-align: left;
+}
+
+.onboarding-feature {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--tg-secondary);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.onboarding-feature__icon { font-size: 26px; flex-shrink: 0; }
+
+.onboarding-feature__text {
+  font-size: 15px;
+  color: var(--tg-text);
+  line-height: 1.4;
+}
+
+/* ────────────────────────────────────────────────────────────
+   18. ОФФЕР — модальное окно первого открытия
+──────────────────────────────────────────────────────────── */
+
+@keyframes offerSlideUp {
+  from { opacity: 0; transform: translateY(48px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes offerFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Полупрозрачный фон */
+.offer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: offerFadeIn 0.25s ease;
+}
+
+/* Карточка снизу */
+.offer-card {
+  background: var(--tg-bg);
+  border-radius: 24px 24px 0 0;
+  padding: 28px 20px calc(20px + var(--safe-bottom));
+  width: 100%;
+  max-width: 430px;
+  text-align: center;
+  animation: offerSlideUp 0.38s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* Эмодзи */
+.offer-emoji {
+  font-size: 60px;
+  line-height: 1;
+  display: block;
+  margin-bottom: 14px;
+}
+
+/* Заголовок */
+.offer-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--tg-text);
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+
+/* Подзаголовок */
+.offer-subtitle {
+  font-size: 15px;
+  color: var(--tg-hint);
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+
+/* Список выгод */
+.offer-bullets {
+  text-align: left;
+  background: var(--tg-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.offer-bullet {
+  font-size: 14px;
+  color: var(--tg-text);
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.offer-bullet::before {
+  content: '•';
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 1.1;
+  flex-shrink: 0;
+}
+
+/* Кнопка CTA */
+.offer-btn {
+  width: 100%;
+  height: 52px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--tg-btn);
+  color: var(--tg-btn-text);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.offer-btn:active {
+  opacity: 0.85;
+  transform: scale(0.99);
+}
+
+/* Ссылка «Пропустить» */
+.offer-skip {
+  font-size: 14px;
+  color: var(--tg-hint);
+  cursor: pointer;
+  padding: 8px 16px;
+  display: inline-block;
+  transition: opacity 0.15s;
+}
+
+.offer-skip:active { opacity: 0.6; }
+
+/* Плашка «Загрузка...» при отправке */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Спиннер */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}

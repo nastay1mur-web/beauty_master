@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<!--
+  index.html — Точка входа Telegram Mini App «Beauty Catalog»
+
+  Структура:
+    #app
+      #view        — контейнер активного экрана (меняется динамически)
+      #bottom-nav  — нижняя навигация (3 таба: Услуги / Записи / О мастере)
+
+  Все экраны рендерятся через JavaScript (app.js).
+  Данные каталога хранятся в data.js.
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="format-detection" content="telephone=no">
+  <title>Катя — Маникюр и педикюр</title>
+
+  <!--
+    Telegram Web App SDK — обязательный скрипт.
+    Подключаем до всего остального.
+    Предоставляет: WebApp.ready(), BackButton, MainButton, HapticFeedback и т.д.
+  -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Стили приложения -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <style>
+    /*
+      Инлайн-стили для самого раннего рендера.
+      Предотвращают белую вспышку до загрузки CSS.
+    */
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--tg-theme-bg-color, #fff);
+      overflow: hidden;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+
+    <!--
+      #view — сюда динамически рендерятся экраны.
+      При навигации старый экран анимируется и удаляется,
+      новый добавляется с нужной анимацией входа.
+    -->
+    <div id="view">
+      <!--
+        Начальное состояние: пустой контейнер.
+        Скелетон и первый экран покажет app.js после DOMContentLoaded.
+      -->
+    </div>
+
+    <!--
+      #bottom-nav — нижняя навигация.
+      Скрывается в воронке записи (Э2–Э4) через класс .hidden.
+      data-screen — имя экрана для navigateTab().
+    -->
+    <nav id="bottom-nav">
+      <button class="nav-item active" data-screen="catalog">
+        <span class="nav-item__icon">💅</span>
+        <span>Услуги</span>
+      </button>
+      <button class="nav-item" data-screen="my-bookings">
+        <span class="nav-item__icon">📅</span>
+        <span>Мои записи</span>
+      </button>
+      <button class="nav-item" data-screen="about">
+        <span class="nav-item__icon">👤</span>
+        <span>О мастере</span>
+      </button>
+    </nav>
+
+  </div><!-- /#app -->
+
+  <!--
+    Данные каталога — должны загрузиться ДО app.js,
+    чтобы MASTER, CATEGORIES, SERVICES были доступны.
+  -->
+  <script src="js/data.js"></script>
+
+  <!--
+    Главный модуль приложения.
+    Запускается по DOMContentLoaded.
+  -->
+  <script src="js/app.js"></script>
+
+</body>
+</html>
