@@ -1,5 +1,5 @@
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const APP_URL = 'https://tg-app-green.vercel.app';
+const APP_URL = 'https://beauty-catalog-omega.vercel.app';
 
 async function sendMessage(chatId, text, options = {}) {
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
