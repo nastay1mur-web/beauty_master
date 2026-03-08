@@ -448,10 +448,14 @@ function _attachWeeklyHandlers(container) {
       try {
         btn.disabled = true;
         btn.textContent = '...';
-        await masterFetch(`/api/master/schedule?id=${id}`, {
+        const patchResp = await masterFetch(`/api/master/schedule?id=${id}`, {
           method: 'PATCH',
           body: JSON.stringify(body),
         });
+        if (!patchResp.ok) {
+          const errData = await patchResp.json().catch(() => ({}));
+          throw new Error(errData.error || `Ошибка ${patchResp.status}`);
+        }
         TG.haptic.success();
         form.style.display = 'none';
         // Обновляем отображение строки
@@ -542,10 +546,14 @@ function attachMasterScheduleHandlers(el) {
       const btn = el.querySelector('#btn-save-override');
       btn.disabled = true;
       btn.textContent = '...';
-      await masterFetch('/api/master/schedule', {
+      const resp = await masterFetch('/api/master/schedule', {
         method: 'POST',
         body: JSON.stringify(body),
       });
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Ошибка ${resp.status}`);
+      }
       TG.haptic.success();
       el.querySelector('#override-form').style.display = 'none';
       await _loadSchedule(el);
@@ -625,8 +633,8 @@ async function _loadSettings(el) {
     if (s.error) throw new Error(s.error);
     wrap.innerHTML = _settingsFormHTML(s);
     _setupSettingsSave(el, s.id);
-  } catch {
-    wrap.innerHTML = `<div class="slots-empty">Ошибка загрузки. Откройте в Telegram.</div>`;
+  } catch (err) {
+    wrap.innerHTML = `<div class="slots-empty">Ошибка: ${_esc(err.message)}</div>`;
   }
 }
 

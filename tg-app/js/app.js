@@ -215,7 +215,7 @@ async function navigateTab(screen) {
 function _render(screen, params, direction) {
   STATE.screen = screen;
 
-  const isTabScreen = ['catalog', 'my-bookings', 'about'].includes(screen);
+  const isTabScreen = ['catalog', 'my-bookings', 'about', 'master-panel'].includes(screen);
 
   if (isTabScreen) {
     bottomNav.classList.remove('hidden');
