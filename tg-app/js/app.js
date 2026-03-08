@@ -7,7 +7,8 @@
  *   3.  РОУТЕР             — navigate(), navigateBack()
  *   4.  НИЖНЯЯ НАВИГАЦИЯ   — renderNav(), updateNav()
  *   5.  SKELETON           — showSkeleton()
- *   6.  ЭКРАНЫ:
+ *   6.  API                — loadCatalog(), fetchSlots(), loadBookings(), saveBooking()
+ *   7.  ЭКРАНЫ:
  *         renderCatalog()
  *         renderServiceDetail()
  *         renderBookingDate()
@@ -15,8 +16,7 @@
  *         renderBookingSuccess()
  *         renderMyBookings()
  *         renderAbout()
- *   7.  КАРУСЕЛЬ           — initCarousel()
- *   8.  ЗАПИСИ             — saveBooking(), loadBookings()
+ *   8.  КАРУСЕЛЬ           — initCarousel()
  *   9.  ИНИЦИАЛИЗАЦИЯ      — init()
  */
 
@@ -30,7 +30,12 @@ const STATE = {
   screen: 'catalog',    // текущий экран
   history: [],          // стек для BackButton (имена экранов)
   category: 'all',      // выбранная категория в каталоге
-  service: null,        // выбранная услуга (объект из SERVICES)
+  service: null,        // выбранная услуга (объект)
+
+  // Данные из API
+  master: null,         // объект мастера
+  services: [],         // массив услуг
+  categories: [],       // массив категорий (включая 'all')
 
   // Данные текущей записи
   booking: {
@@ -40,8 +45,8 @@ const STATE = {
     endTime: null,      // 'HH:MM'
   },
 
-  bookings: [],         // сохранённые записи (localStorage)
-  slots: null,          // кэш расписания (генерируется один раз)
+  bookings: [],         // сохранённые записи
+  slots: {},            // кэш слотов: { 'YYYY-MM-DD': [{time, busy}] }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -54,10 +59,9 @@ const TG = {
   /** Инициализировать Telegram Web App */
   init() {
     if (!this.wa) return;
-    this.wa.ready();    // Сообщаем Telegram что приложение загружено
-    this.wa.expand();   // Разворачиваем на весь экран
+    this.wa.ready();
+    this.wa.expand();
 
-    // Обновляем высоту вьюпорта при изменении (клавиатура и т.д.)
     this.wa.onEvent('viewportChanged', ({ isStateStable }) => {
       if (isStateStable) {
         document.documentElement.style.setProperty(
@@ -74,6 +78,11 @@ const TG = {
     return user.last_name
       ? `${user.first_name} ${user.last_name}`
       : user.first_name;
+  },
+
+  /** Данные пользователя Telegram */
+  getUser() {
+    return this.wa?.initDataUnsafe?.user || null;
   },
 
   // ── HapticFeedback ──────────────────────────────────────────
@@ -99,7 +108,7 @@ const TG = {
     show(callback) {
       const btn = window.Telegram?.WebApp?.BackButton;
       if (!btn) return;
-      btn.offClick(); // Удаляем старый обработчик
+      btn.offClick();
       btn.onClick(callback);
       btn.show();
     },
@@ -179,44 +188,34 @@ const TG = {
    3. РОУТЕР
 ══════════════════════════════════════════════════════════════ */
 
-const view    = document.getElementById('view');
+const view      = document.getElementById('view');
 const bottomNav = document.getElementById('bottom-nav');
 
-/**
- * Переход на экран вперёд.
- * @param {string} screen  — имя экрана
- * @param {object} params  — дополнительные данные (опционально)
- */
 function navigate(screen, params = {}) {
   STATE.history.push(STATE.screen);
   _render(screen, params, 'forward');
 }
 
-/** Переход назад по истории */
 function navigateBack() {
   if (STATE.history.length === 0) return;
   const prev = STATE.history.pop();
   _render(prev, {}, 'back');
 }
 
-/**
- * Переход на корневой таб без сохранения в историю.
- * @param {string} screen — 'catalog' | 'my-bookings' | 'about'
- */
-function navigateTab(screen) {
-  // Сбрасываем историю при переключении табов
+async function navigateTab(screen) {
   STATE.history = [];
+  // При переходе в «Мои записи» — перезагружаем с API
+  if (screen === 'my-bookings') {
+    STATE.bookings = await loadBookings();
+  }
   _render(screen, {}, 'forward');
 }
 
-/** Внутренняя функция — рендер + анимация */
 function _render(screen, params, direction) {
   STATE.screen = screen;
 
-  // ── Определяем, это таб-экран или воронка ──────────────────
   const isTabScreen = ['catalog', 'my-bookings', 'about'].includes(screen);
 
-  // ── Нижняя навигация ───────────────────────────────────────
   if (isTabScreen) {
     bottomNav.classList.remove('hidden');
     updateNav(screen);
@@ -224,25 +223,18 @@ function _render(screen, params, direction) {
     bottomNav.classList.add('hidden');
   }
 
-  // ── BackButton ─────────────────────────────────────────────
   if (!isTabScreen && STATE.history.length > 0) {
     TG.backBtn.show(navigateBack);
   } else {
     TG.backBtn.hide();
   }
 
-  // ── Скрыть MainButton по умолчанию ────────────────────────
-  // Каждый экран сам покажет его если нужно
   TG.mainBtn.hide();
 
-  // ── Создаём новый экран ───────────────────────────────────
   const newEl = document.createElement('div');
   newEl.className = `screen screen-enter-${direction}`;
-
-  // ── Рендерим контент ──────────────────────────────────────
   newEl.innerHTML = _getScreenHTML(screen, params);
 
-  // ── Уходящий экран ────────────────────────────────────────
   const oldEl = view.querySelector('.screen');
   if (oldEl) {
     oldEl.classList.remove('screen-enter-forward', 'screen-enter-back');
@@ -252,17 +244,14 @@ function _render(screen, params, direction) {
 
   view.appendChild(newEl);
 
-  // Успех — особая анимация
   if (screen === 'booking-success') {
     newEl.classList.add('screen-fade-in');
     newEl.classList.remove(`screen-enter-${direction}`);
   }
 
-  // ── Вешаем обработчики событий ────────────────────────────
   setTimeout(() => _attachHandlers(screen, newEl), 10);
 }
 
-/** Возвращает HTML нужного экрана */
 function _getScreenHTML(screen, params) {
   switch (screen) {
     case 'onboarding':      return renderOnboarding();
@@ -277,7 +266,6 @@ function _getScreenHTML(screen, params) {
   }
 }
 
-/** Вешает обработчики событий для конкретного экрана */
 function _attachHandlers(screen, el) {
   switch (screen) {
     case 'onboarding':      attachOnboardingHandlers(el);     break;
@@ -320,10 +308,230 @@ function skeletonCatalog() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   6. ЭКРАНЫ
+   6. API — загрузка данных
 ══════════════════════════════════════════════════════════════ */
 
-// ── ЭКРАН 0: ОНБОРДИНГ (первый запуск) ───────────────────────
+/**
+ * Загружает каталог (услуги, категории, профиль мастера) с API.
+ * При ошибке — пытается использовать данные из data.js как резерв.
+ */
+async function loadCatalog() {
+  try {
+    const [servicesRaw, categoriesRaw, masterRaw] = await Promise.all([
+      fetch('/api/services').then(r => r.json()),
+      fetch('/api/categories').then(r => r.json()),
+      fetch('/api/master-profile').then(r => r.json()),
+    ]);
+
+    // Нормализуем услуги — приводим поля API к именам, которые ожидают render-функции
+    STATE.services = servicesRaw.map(s => ({
+      ...s,
+      categoryId:   s.category_id,
+      shortDesc:    s.short_desc,
+      priceNote:    s.price_note,
+      bookingCount: s.booking_count,
+      available:    s.is_active !== false,
+      photos:       (s.photoUrls && s.photoUrls.length) || 1,
+      photoUrls:    s.photoUrls || [],
+      gradient:     s.gradient || 'linear-gradient(135deg, #C9A96E, #e8c89a)',
+      emoji:        s.emoji || '💅',
+    }));
+
+    // Категории: добавляем «Все» если API не вернул его первым
+    STATE.categories = categoriesRaw[0]?.id === 'all'
+      ? categoriesRaw
+      : [{ id: 'all', name: 'Все', emoji: '✨' }, ...categoriesRaw];
+
+    // Нормализуем мастера
+    STATE.master = {
+      name:               masterRaw.short_name || masterRaw.full_name,
+      fullName:           masterRaw.full_name,
+      title:              masterRaw.title,
+      experience:         masterRaw.experience_years,
+      rating:             masterRaw.rating,
+      reviewCount:        masterRaw.review_count,
+      bio:                masterRaw.bio,
+      city:               masterRaw.city,
+      address:            masterRaw.address,
+      mapUrl:             masterRaw.map_url,
+      telegramUsername:   masterRaw.telegram_username,
+      botUsername:        masterRaw.bot_username,
+      cancellationPolicy: masterRaw.cancellation_policy,
+      photoUrl:           masterRaw.photoUrl || null,
+      hours:              [], // часы работы отображаются через work_schedule
+    };
+  } catch (err) {
+    console.warn('API unavailable, falling back to local data:', err.message);
+    // Fallback на данные из data.js (если подключён)
+    if (typeof MASTER !== 'undefined') {
+      STATE.master = MASTER;
+      STATE.services = SERVICES || [];
+      STATE.categories = CATEGORIES || [];
+    }
+  }
+}
+
+/**
+ * Загружает свободные слоты с API для конкретной даты и услуги.
+ * Возвращает [{time: 'HH:MM', busy: false}].
+ */
+async function fetchSlots(dateStr, serviceId) {
+  // Проверяем кэш
+  if (STATE.slots[dateStr]) return STATE.slots[dateStr];
+
+  try {
+    const data = await fetch(`/api/slots?date=${dateStr}&service_id=${serviceId}`)
+      .then(r => r.json());
+
+    // API возвращает массив строк ['10:00', '10:30', ...]
+    const slots = Array.isArray(data)
+      ? data.map(time => ({ time, busy: false }))
+      : [];
+
+    STATE.slots[dateStr] = slots;
+    return slots;
+  } catch (err) {
+    console.warn('Slots fetch failed:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Загружает записи пользователя с API.
+ * Fallback: localStorage.
+ */
+async function loadBookings() {
+  const user = TG.getUser();
+
+  if (user && user.id) {
+    try {
+      const data = await fetch(`/api/bookings?telegram_user_id=${user.id}`)
+        .then(r => r.json());
+
+      // Нормализуем поля API к именам, которые ожидают render-функции
+      return (Array.isArray(data) ? data : []).map(b => ({
+        ...b,
+        serviceId:   b.service_id,
+        serviceName: b.service_name,
+        date:        b.booking_date,
+        time:        b.start_time,
+        endTime:     b.end_time,
+        price:       b.service_price,
+      }));
+    } catch (err) {
+      console.warn('Bookings fetch failed:', err.message);
+    }
+  }
+
+  // Fallback: localStorage
+  try {
+    const raw = localStorage.getItem('beauty_bookings');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Сохраняет текущую запись через API.
+ * Fallback: localStorage.
+ */
+async function saveBooking() {
+  const { service, date, time, endTime } = STATE.booking;
+  const user = TG.getUser();
+
+  if (user && user.id) {
+    try {
+      const body = {
+        telegram_user_id:    user.id,
+        telegram_first_name: user.first_name,
+        telegram_last_name:  user.last_name  || null,
+        telegram_username:   user.username   || null,
+        service_id:          service.id,
+        service_name:        service.name,
+        service_price:       service.price,
+        service_duration:    service.duration,
+        booking_date:        date,
+        start_time:          time,
+        end_time:            endTime,
+      };
+
+      const result = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      });
+
+      // Добавляем нормализованную запись в STATE
+      const saved = {
+        ...result,
+        serviceId:   result.service_id,
+        serviceName: result.service_name,
+        date:        result.booking_date,
+        time:        result.start_time,
+        endTime:     result.end_time,
+        price:       result.service_price,
+      };
+      STATE.bookings.unshift(saved);
+      // Сбрасываем кэш слотов для этой даты (слот занят)
+      delete STATE.slots[date];
+      return;
+    } catch (err) {
+      console.warn('Save booking via API failed:', err.message);
+    }
+  }
+
+  // Fallback: localStorage
+  const newBooking = {
+    id:          Date.now().toString(),
+    serviceId:   service.id,
+    serviceName: service.name,
+    date,
+    time,
+    endTime,
+    price:       service.price,
+    status:      'confirmed',
+    createdAt:   new Date().toISOString(),
+  };
+  STATE.bookings.unshift(newBooking);
+  try {
+    localStorage.setItem('beauty_bookings', JSON.stringify(STATE.bookings));
+  } catch { /* ignore */ }
+}
+
+/**
+ * Отменяет запись через API.
+ * Fallback: обновляет status в localStorage.
+ */
+async function cancelBooking(id) {
+  // Optimistic update
+  const booking = STATE.bookings.find(b => b.id === id);
+  if (booking) booking.status = 'cancelled';
+
+  const user = TG.getUser();
+  if (user && user.id) {
+    try {
+      await fetch(`/api/bookings?id=${id}&action=cancel`, { method: 'PATCH' });
+      return;
+    } catch (err) {
+      console.warn('Cancel booking via API failed:', err.message);
+    }
+  }
+
+  // Fallback: обновляем localStorage
+  try {
+    localStorage.setItem('beauty_bookings', JSON.stringify(STATE.bookings));
+  } catch { /* ignore */ }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   7. ЭКРАНЫ
+══════════════════════════════════════════════════════════════ */
+
+// ── ЭКРАН 0: ОНБОРДИНГ ───────────────────────────────────────
 
 const ONBOARDING_KEY = 'beauty_onboarded';
 
@@ -368,7 +576,6 @@ function attachOnboardingHandlers(el) {
 
 // ── ЭКРАН 1: КАТАЛОГ ─────────────────────────────────────────
 
-/** Генерирует HTML компактного списка услуг */
 function renderServiceItems(services) {
   if (services.length === 0) {
     return `<div class="services-empty">🌸 В этой категории пока нет услуг</div>`;
@@ -390,11 +597,12 @@ function renderServiceItems(services) {
 }
 
 function renderCatalog() {
+  const master = STATE.master || {};
   const filtered = STATE.category === 'all'
-    ? SERVICES
-    : SERVICES.filter(s => s.categoryId === STATE.category);
+    ? STATE.services
+    : STATE.services.filter(s => s.categoryId === STATE.category);
 
-  const categoriesHTML = CATEGORIES.map(cat => `
+  const categoriesHTML = STATE.categories.map(cat => `
     <button class="category-pill ${cat.id === STATE.category ? 'active' : ''}"
             data-cat="${cat.id}">
       ${cat.emoji} ${cat.name}
@@ -402,7 +610,7 @@ function renderCatalog() {
   `).join('');
 
   // Портфолио — первые 6 услуг как мини-фото
-  const portfolioHTML = SERVICES.slice(0, 6).map(s => `
+  const portfolioHTML = STATE.services.slice(0, 6).map(s => `
     <div class="portfolio-thumb" style="background:${s.gradient}">${s.emoji}</div>
   `).join('');
 
@@ -410,18 +618,20 @@ function renderCatalog() {
     <div class="screen-content">
       <!-- Шапка с аватаром мастера -->
       <div class="master-header">
-        <div class="master-avatar">💅</div>
+        ${master.photoUrl
+          ? `<img class="master-avatar master-avatar--photo" src="${master.photoUrl}" alt="${master.name}">`
+          : `<div class="master-avatar">💅</div>`}
         <div class="master-info">
-          <div class="master-info__name">${MASTER.name}</div>
+          <div class="master-info__name">${master.name || ''}</div>
           <div class="master-info__sub">
-            ${MASTER.title} &nbsp;·&nbsp;
-            <span class="rating-star">★</span> ${MASTER.rating}
+            ${master.title || ''} &nbsp;·&nbsp;
+            <span class="rating-star">★</span> ${master.rating || ''}
           </div>
         </div>
       </div>
 
       <!-- Портфолио -->
-      <div class="portfolio-row">${portfolioHTML}</div>
+      ${portfolioHTML ? `<div class="portfolio-row">${portfolioHTML}</div>` : ''}
 
       <!-- Категории -->
       <div class="categories">
@@ -437,7 +647,6 @@ function renderCatalog() {
 }
 
 function attachCatalogHandlers(el) {
-  // Клики по категориям
   el.querySelectorAll('.category-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       TG.haptic.selection();
@@ -448,8 +657,8 @@ function attachCatalogHandlers(el) {
       );
 
       const filtered = STATE.category === 'all'
-        ? SERVICES
-        : SERVICES.filter(s => s.categoryId === STATE.category);
+        ? STATE.services
+        : STATE.services.filter(s => s.categoryId === STATE.category);
 
       el.querySelector('#services-list').innerHTML = renderServiceItems(filtered);
       attachServiceItemHandlers(el);
@@ -460,10 +669,9 @@ function attachCatalogHandlers(el) {
 }
 
 function attachServiceItemHandlers(el) {
-  // Тап на строку услуги — открыть детали
   el.querySelectorAll('.service-item:not(.service-item--unavailable)').forEach(item => {
     item.addEventListener('click', () => {
-      const service = SERVICES.find(s => s.id === item.dataset.id);
+      const service = STATE.services.find(s => s.id === item.dataset.id);
       if (!service) return;
       TG.haptic.impact('light');
       STATE.service = service;
@@ -479,16 +687,23 @@ function renderServiceDetail() {
   const s = STATE.service;
   if (!s) return '<div style="padding:20px">Ошибка</div>';
 
-  // Генерируем слайды карусели
-  const slidesHTML = Array.from({ length: s.photos }, (_, i) => `
-    <div class="carousel__slide" style="background:${s.gradient}; flex-shrink:0; width:100%">
-      <span style="font-size:${i === 0 ? '80px' : '60px'}">${i % 2 === 0 ? s.emoji : '✨'}</span>
-    </div>
-  `).join('');
+  const master = STATE.master || {};
+  const slideCount = s.photoUrls && s.photoUrls.length > 0 ? s.photoUrls.length : s.photos || 1;
 
-  const dotsHTML = s.photos > 1
+  const slidesHTML = Array.from({ length: slideCount }, (_, i) => {
+    const hasPhoto = s.photoUrls && s.photoUrls[i];
+    return hasPhoto
+      ? `<div class="carousel__slide" style="flex-shrink:0; width:100%; background:#000">
+           <img src="${s.photoUrls[i]}" alt="${s.name}" style="width:100%;height:100%;object-fit:cover">
+         </div>`
+      : `<div class="carousel__slide" style="background:${s.gradient}; flex-shrink:0; width:100%">
+           <span style="font-size:${i === 0 ? '80px' : '60px'}">${i % 2 === 0 ? s.emoji : '✨'}</span>
+         </div>`;
+  }).join('');
+
+  const dotsHTML = slideCount > 1
     ? `<div class="carousel__dots">
-         ${Array.from({ length: s.photos }, (_, i) =>
+         ${Array.from({ length: slideCount }, (_, i) =>
            `<div class="carousel__dot ${i === 0 ? 'active' : ''}" data-idx="${i}"></div>`
          ).join('')}
        </div>`
@@ -520,11 +735,11 @@ function renderServiceDetail() {
 
         <div class="detail-policy">
           <div class="detail-policy__title">📋 Политика отмены</div>
-          ${MASTER.cancellationPolicy}
+          ${master.cancellationPolicy || ''}
         </div>
       </div>
 
-      <!-- Fallback-кнопка для браузера (в Telegram используется MainButton) -->
+      <!-- Fallback-кнопка для браузера -->
       <div class="page-cta-wrap" id="page-cta" style="display:none">
         <button class="btn-primary" id="btn-book-now">Записаться</button>
       </div>
@@ -533,7 +748,6 @@ function renderServiceDetail() {
 }
 
 function attachServiceDetailHandlers(el) {
-  // Инициализируем карусель
   initCarousel(el);
 
   const onBook = () => {
@@ -541,14 +755,14 @@ function attachServiceDetailHandlers(el) {
     STATE.booking.date = null;
     STATE.booking.time = null;
     STATE.booking.endTime = null;
+    // Сбрасываем кэш слотов при новом бронировании
+    STATE.slots = {};
     navigate('booking-date');
   };
 
   if (window.Telegram?.WebApp?.initData) {
-    // В Telegram — нативная MainButton
     TG.mainBtn.show('Записаться', onBook);
   } else {
-    // В браузере — показываем встроенную кнопку
     el.querySelector('#page-cta').style.display = 'block';
     el.querySelector('#btn-book-now').addEventListener('click', onBook);
   }
@@ -556,31 +770,39 @@ function attachServiceDetailHandlers(el) {
 
 // ── ЭКРАН 3: ВЫБОР ДАТЫ И ВРЕМЕНИ ────────────────────────────
 
-function renderBookingDate() {
-  // Инициализируем слоты если нет
-  if (!STATE.slots) {
-    STATE.slots = generateSlots();
+/** Генерирует массив дат на ближайшие 14 дней */
+function generateUpcomingDates() {
+  const dates = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    dates.push(d.toISOString().slice(0, 10)); // 'YYYY-MM-DD'
   }
+  return dates;
+}
 
+function renderBookingDate() {
   const s = STATE.booking.service;
-  const slotDays = Object.keys(STATE.slots);
+  const dates = generateUpcomingDates();
 
-  const daysHTML = slotDays.map(dateStr => {
+  const daysHTML = dates.map(dateStr => {
     const { dayName, dayNum } = formatDayPill(dateStr);
-    const hasSlots = STATE.slots[dateStr].some(sl => !sl.busy);
     const isSelected = STATE.booking.date === dateStr;
     return `
-      <button class="day-pill ${isSelected ? 'selected' : ''} ${!hasSlots ? 'unavailable' : ''}"
-              data-date="${dateStr}" ${!hasSlots ? 'disabled' : ''}>
+      <button class="day-pill ${isSelected ? 'selected' : ''}"
+              data-date="${dateStr}">
         <span class="day-pill__name">${dayName}</span>
         <span class="day-pill__num">${dayNum}</span>
       </button>
     `;
   }).join('');
 
-  // Слоты для выбранной даты
-  const slotsHTML = STATE.booking.date
-    ? renderSlots(STATE.slots[STATE.booking.date])
+  // Слоты для выбранной даты (если уже загружены из кэша)
+  const cachedSlots = STATE.booking.date ? STATE.slots[STATE.booking.date] : null;
+  const slotsHTML = cachedSlots
+    ? renderSlots(cachedSlots)
     : `<div class="slots-empty">👆 Выберите удобную дату</div>`;
 
   return `
@@ -614,7 +836,7 @@ function renderSlots(daySlots) {
   }
 
   const slotsHTML = daySlots.map(slot => `
-    <button class="slot-btn ${slot.busy ? '' : ''} ${STATE.booking.time === slot.time ? 'selected' : ''}"
+    <button class="slot-btn ${STATE.booking.time === slot.time ? 'selected' : ''}"
             data-time="${slot.time}"
             ${slot.busy ? 'disabled' : ''}>
       ${slot.busy ? '——' : slot.time}
@@ -632,32 +854,27 @@ function attachBookingDateHandlers(el) {
   const pageCta = el.querySelector('#page-cta');
   const pageBtn = el.querySelector('#btn-next-confirm');
 
-  // В браузере — показываем встроенную кнопку
   if (!inTg && pageCta) {
     pageCta.style.display = 'block';
     pageBtn.addEventListener('click', goToConfirm);
   }
 
   // Выбор дня
-  el.querySelectorAll('.day-pill:not(:disabled)').forEach(btn => {
-    btn.addEventListener('click', () => {
+  el.querySelectorAll('.day-pill').forEach(btn => {
+    btn.addEventListener('click', async () => {
       TG.haptic.selection();
       STATE.booking.date = btn.dataset.date;
-      STATE.booking.time = null;  // Сбрасываем выбранное время
+      STATE.booking.time = null;
 
-      // Обновляем выделение дней
       el.querySelectorAll('.day-pill').forEach(b =>
         b.classList.toggle('selected', b.dataset.date === STATE.booking.date)
       );
 
-      // Рендерим слоты
+      // Показываем лоадер
       const section = el.querySelector('#slots-section');
-      section.innerHTML = renderSlots(STATE.slots[STATE.booking.date]);
+      section.innerHTML = `<div class="slots-empty">⏳ Загружаем расписание...</div>`;
 
-      // Вешаем обработчики на слоты
-      attachSlotHandlers(el);
-
-      // Сбрасываем кнопку «Далее» — время не выбрано
+      // Сбрасываем кнопку «Далее»
       if (inTg) {
         TG.mainBtn.show('Выберите время', () => {}, null);
         window.Telegram?.WebApp?.MainButton?.disable();
@@ -665,6 +882,11 @@ function attachBookingDateHandlers(el) {
         pageBtn.disabled = true;
         pageBtn.textContent = 'Выберите время';
       }
+
+      // Загружаем слоты с API
+      const slots = await fetchSlots(STATE.booking.date, STATE.booking.service.id);
+      section.innerHTML = renderSlots(slots);
+      attachSlotHandlers(el);
     });
   });
 
@@ -693,17 +915,14 @@ function attachSlotHandlers(el) {
       STATE.booking.time = btn.dataset.time;
       STATE.booking.endTime = calcEndTime(btn.dataset.time, STATE.booking.service.duration);
 
-      // Выделяем слот
       el.querySelectorAll('.slot-btn').forEach(b =>
         b.classList.toggle('selected', b.dataset.time === STATE.booking.time)
       );
 
-      // Активируем кнопку «Далее»
       const dateShort = formatDateShort(STATE.booking.date);
       const label = `Далее — ${dateShort}, ${STATE.booking.time}`;
       TG.mainBtn.show(label, goToConfirm);
 
-      // Fallback для браузера
       const pageBtn = el.querySelector('#btn-next-confirm');
       if (pageBtn) {
         pageBtn.disabled = false;
@@ -727,12 +946,12 @@ function goToConfirm() {
 function renderBookingConfirm() {
   const { service, date, time, endTime } = STATE.booking;
   const userName = TG.getUserName();
+  const master = STATE.master || {};
 
   return `
     <div class="confirm-screen screen-funnel">
       <h1 class="confirm-title">✦ Ваша запись</h1>
 
-      <!-- Карточка с деталями -->
       <div class="confirm-card">
         <div class="confirm-row">
           <div class="confirm-row__icon">💅</div>
@@ -764,7 +983,6 @@ function renderBookingConfirm() {
         </div>
       </div>
 
-      <!-- Карточка клиента -->
       <div class="confirm-card">
         <div class="confirm-row">
           <div class="confirm-row__icon">👤</div>
@@ -775,7 +993,7 @@ function renderBookingConfirm() {
         </div>
       </div>
 
-      <p class="confirm-policy">${MASTER.cancellationPolicy}</p>
+      <p class="confirm-policy">${master.cancellationPolicy || ''}</p>
 
       <!-- Fallback-кнопка для браузера -->
       <div class="page-cta-wrap" id="page-cta" style="display:none">
@@ -786,20 +1004,22 @@ function renderBookingConfirm() {
 }
 
 function attachBookingConfirmHandlers(el) {
-  const onConfirm = () => {
+  const onConfirm = async () => {
     TG.haptic.impact('medium');
     TG.mainBtn.setLoading(true);
 
-    // Блокируем fallback-кнопку на время «отправки»
     const pageBtn = el.querySelector('#btn-confirm');
     if (pageBtn) { pageBtn.disabled = true; pageBtn.textContent = '...'; }
 
-    // Имитация отправки на сервер
-    setTimeout(() => {
+    try {
+      await saveBooking();
       TG.mainBtn.setLoading(false);
-      saveBooking();
       navigate('booking-success');
-    }, 700);
+    } catch (err) {
+      TG.mainBtn.setLoading(false);
+      if (pageBtn) { pageBtn.disabled = false; pageBtn.textContent = 'Подтвердить запись'; }
+      TG.alert('Ошибка при записи. Попробуйте ещё раз.');
+    }
   };
 
   if (window.Telegram?.WebApp?.initData) {
@@ -814,6 +1034,7 @@ function attachBookingConfirmHandlers(el) {
 
 function renderBookingSuccess() {
   const { service, date, time } = STATE.booking;
+  const master = STATE.master || {};
 
   return `
     <div class="success-screen">
@@ -822,7 +1043,7 @@ function renderBookingSuccess() {
       <p class="success-info">${formatDateLong(date)} · ${time}</p>
       <p class="success-info" style="margin-bottom:4px">${service?.name}</p>
       <p class="success-sub">
-        ${MASTER.name} пришлёт напоминание<br>за 24 часа до визита
+        ${master.name || 'Мастер'} пришлёт напоминание<br>за 24 часа до визита
       </p>
       <button class="btn-secondary" id="btn-back-catalog">Вернуться к услугам</button>
     </div>
@@ -830,12 +1051,10 @@ function renderBookingSuccess() {
 }
 
 function attachSuccessHandlers(el) {
-  // Haptic на успех
   TG.haptic.success();
 
   el.querySelector('#btn-back-catalog').addEventListener('click', () => {
     TG.haptic.impact('light');
-    // Сбрасываем историю и возвращаемся в каталог
     STATE.history = [];
     STATE.booking = { service: null, date: null, time: null, endTime: null };
     navigateTab('catalog');
@@ -846,8 +1065,8 @@ function attachSuccessHandlers(el) {
 
 function renderMyBookings() {
   const now = new Date();
-  const upcoming = STATE.bookings.filter(b => new Date(b.date + 'T23:59:00') >= now);
-  const past     = STATE.bookings.filter(b => new Date(b.date + 'T23:59:00') <  now);
+  const upcoming = STATE.bookings.filter(b => new Date((b.date || b.booking_date) + 'T23:59:00') >= now);
+  const past     = STATE.bookings.filter(b => new Date((b.date || b.booking_date) + 'T23:59:00') <  now);
 
   if (STATE.bookings.length === 0) {
     return `
@@ -872,16 +1091,17 @@ function renderMyBookings() {
       cancelled:  { cls: 'cancelled',  dot: '✕', text: 'Отменено' },
     };
     const st = statusMap[b.status] || statusMap.confirmed;
+    const serviceId = b.serviceId || b.service_id;
     const actionBtn = isPast
-      ? `<button class="btn-outline btn-outline--accent" data-rebooking="${b.serviceId}">Записаться снова</button>`
+      ? `<button class="btn-outline btn-outline--accent" data-rebooking="${serviceId}">Записаться снова</button>`
       : b.status !== 'cancelled'
         ? `<button class="btn-outline btn-outline--danger" data-cancel="${b.id}">Отменить</button>`
         : '';
 
     return `
       <div class="booking-card">
-        <div class="booking-card__name">${b.serviceName}</div>
-        <div class="booking-card__date">${formatDateLong(b.date)} · ${b.time}</div>
+        <div class="booking-card__name">${b.serviceName || b.service_name}</div>
+        <div class="booking-card__date">${formatDateLong(b.date || b.booking_date)} · ${b.time || b.start_time}</div>
         <div class="booking-card__footer">
           <div class="status-badge status-badge--${st.cls}">${st.dot} ${st.text}</div>
           ${actionBtn}
@@ -908,37 +1128,30 @@ function renderMyBookings() {
 }
 
 function attachMyBookingsHandlers(el) {
-  // Перейти к услугам (из пустого состояния)
   el.querySelector('#btn-to-catalog')?.addEventListener('click', () => {
     navigateTab('catalog');
   });
 
-  // Отменить запись
   el.querySelectorAll('[data-cancel]').forEach(btn => {
     btn.addEventListener('click', () => {
       TG.haptic.impact('rigid');
-      TG.confirm('Отменить запись?', (ok) => {
+      TG.confirm('Отменить запись?', async (ok) => {
         if (!ok) return;
         const id = btn.dataset.cancel;
-        const booking = STATE.bookings.find(b => b.id === id);
-        if (booking) {
-          booking.status = 'cancelled';
-          saveBookings();
-          // Перерендериваем экран
-          navigateTab('my-bookings');
-        }
+        await cancelBooking(id);
+        navigateTab('my-bookings');
       });
     });
   });
 
-  // Записаться снова
   el.querySelectorAll('[data-rebooking]').forEach(btn => {
     btn.addEventListener('click', () => {
       TG.haptic.impact('light');
-      const service = SERVICES.find(s => s.id === btn.dataset.rebooking);
+      const service = STATE.services.find(s => s.id === btn.dataset.rebooking);
       if (service) {
         STATE.service = service;
         STATE.booking = { service, date: null, time: null, endTime: null };
+        STATE.slots = {};
         navigate('booking-date');
       }
     });
@@ -948,51 +1161,55 @@ function attachMyBookingsHandlers(el) {
 // ── ЭКРАН 7: О МАСТЕРЕ ───────────────────────────────────────
 
 function renderAbout() {
-  const hoursHTML = MASTER.hours.map(h => `
-    <div class="hours-line">
-      <span>${h.days}</span>
-      <span>${h.time}</span>
-    </div>
-  `).join('');
+  const master = STATE.master || {};
+
+  const hoursHTML = (master.hours && master.hours.length > 0)
+    ? master.hours.map(h => `
+        <div class="hours-line">
+          <span>${h.days}</span>
+          <span>${h.time}</span>
+        </div>
+      `).join('')
+    : `<div class="hours-line"><span>Пн—Сб</span><span>10:00 — 20:00</span></div>
+       <div class="hours-line"><span>Вс</span><span>Выходной</span></div>`;
 
   return `
     <div class="about-screen screen-content">
       <!-- Hero фото -->
-      <div class="master-hero">💅</div>
+      ${master.photoUrl
+        ? `<img class="master-hero master-hero--photo" src="${master.photoUrl}" alt="${master.fullName}">`
+        : `<div class="master-hero">💅</div>`}
 
       <div class="about-body">
-        <h1 class="about-name">${MASTER.fullName}</h1>
-        <p class="about-title">${MASTER.title} · ${MASTER.experience} лет опыта</p>
+        <h1 class="about-name">${master.fullName || ''}</h1>
+        <p class="about-title">${master.title || ''} · ${master.experience || ''} лет опыта</p>
 
-        <!-- Статы -->
         <div class="about-stats">
           <div class="stat-chip">
-            <div class="stat-chip__value">★ ${MASTER.rating}</div>
+            <div class="stat-chip__value">★ ${master.rating || ''}</div>
             <div class="stat-chip__label">Рейтинг</div>
           </div>
           <div class="stat-chip">
-            <div class="stat-chip__value">${MASTER.reviewCount}</div>
+            <div class="stat-chip__value">${master.reviewCount || ''}</div>
             <div class="stat-chip__label">Отзывов</div>
           </div>
           <div class="stat-chip">
-            <div class="stat-chip__value">${MASTER.experience}</div>
+            <div class="stat-chip__value">${master.experience || ''}</div>
             <div class="stat-chip__label">Лет опыта</div>
           </div>
         </div>
 
-        <!-- О себе -->
-        <p class="about-bio">${MASTER.bio}</p>
+        <p class="about-bio">${master.bio || ''}</p>
 
         <div class="divider"></div>
 
-        <!-- Адрес и часы -->
         <div class="info-list">
           <div class="info-row">
             <div class="info-row__icon">📍</div>
             <div class="info-row__content">
               <div class="info-row__label">Адрес</div>
-              <div class="info-row__value">${MASTER.city}, ${MASTER.address}</div>
-              <span class="link-btn" id="btn-map">Открыть карту →</span>
+              <div class="info-row__value">${master.city || ''}, ${master.address || ''}</div>
+              ${master.mapUrl ? `<span class="link-btn" id="btn-map">Открыть карту →</span>` : ''}
             </div>
           </div>
           <div class="info-row">
@@ -1004,7 +1221,6 @@ function renderAbout() {
           </div>
         </div>
 
-        <!-- Кнопки действий -->
         <div class="about-action">
           <button class="btn-primary" id="btn-write">
             💬 Написать мастеру
@@ -1021,20 +1237,22 @@ function renderAbout() {
 }
 
 function attachAboutHandlers(el) {
+  const master = STATE.master || {};
+
   el.querySelector('#btn-map')?.addEventListener('click', () => {
     TG.haptic.impact('light');
-    TG.openLink(MASTER.mapUrl);
+    if (master.mapUrl) TG.openLink(master.mapUrl);
   });
 
   el.querySelector('#btn-write')?.addEventListener('click', () => {
     TG.haptic.impact('medium');
-    TG.openTelegramChat(MASTER.telegramUsername);
+    if (master.telegramUsername) TG.openTelegramChat(master.telegramUsername);
   });
 
   el.querySelector('#btn-share')?.addEventListener('click', () => {
     TG.haptic.impact('light');
     const text = 'Записывайся к классному бьюти-мастеру — маникюр, педикюр, лэши и брови онлайн!';
-    const url = `https://t.me/${MASTER.botUsername}`;
+    const url = `https://t.me/${master.botUsername || ''}`;
     const link = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
     if (window.Telegram?.WebApp?.openTelegramLink) {
       window.Telegram.WebApp.openTelegramLink(link);
@@ -1045,7 +1263,7 @@ function attachAboutHandlers(el) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   7. КАРУСЕЛЬ
+   8. КАРУСЕЛЬ
 ══════════════════════════════════════════════════════════════ */
 
 function initCarousel(el) {
@@ -1064,7 +1282,6 @@ function initCarousel(el) {
     TG.haptic.selection();
   }
 
-  // Touch-жесты
   track.addEventListener('touchstart', e => {
     startX = e.touches[0].clientX;
     isDragging = true;
@@ -1079,52 +1296,9 @@ function initCarousel(el) {
     }
   });
 
-  // Клик по точкам
   dots.forEach((dot, i) => {
     dot.addEventListener('click', () => goTo(i));
   });
-}
-
-/* ══════════════════════════════════════════════════════════════
-   8. ЗАПИСИ — localStorage
-══════════════════════════════════════════════════════════════ */
-
-/** Сохраняет текущую запись из STATE.booking */
-function saveBooking() {
-  const { service, date, time, endTime } = STATE.booking;
-  const newBooking = {
-    id: Date.now().toString(),
-    serviceId: service.id,
-    serviceName: service.name,
-    date,
-    time,
-    endTime,
-    price: service.price,
-    status: 'confirmed',
-    createdAt: new Date().toISOString(),
-  };
-
-  STATE.bookings.unshift(newBooking);
-  saveBookings();
-}
-
-/** Загружает записи из localStorage */
-function loadBookings() {
-  try {
-    const raw = localStorage.getItem('beauty_bookings');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Сохраняет массив записей в localStorage */
-function saveBookings() {
-  try {
-    localStorage.setItem('beauty_bookings', JSON.stringify(STATE.bookings));
-  } catch {
-    // Игнорируем ошибки localStorage
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1134,10 +1308,10 @@ function saveBookings() {
 const OFFER_SHOWN_KEY = 'beauty_offer_shown';
 
 function showOffer() {
-  // Показываем только один раз
   if (localStorage.getItem(OFFER_SHOWN_KEY)) return;
 
-  const botLink = `https://t.me/${MASTER.botUsername}?start=from_app`;
+  const master = STATE.master || {};
+  const botLink = `https://t.me/${master.botUsername || ''}?start=from_app`;
 
   const overlay = document.createElement('div');
   overlay.className = 'offer-overlay';
@@ -1178,7 +1352,6 @@ function showOffer() {
     closeOffer();
   });
 
-  // Тап по фону — закрыть
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
       TG.haptic.selection();
@@ -1191,12 +1364,11 @@ function showOffer() {
    9. ИНИЦИАЛИЗАЦИЯ
 ══════════════════════════════════════════════════════════════ */
 
-function init() {
-  // Инициализируем Telegram SDK
+async function init() {
   TG.init();
 
-  // Загружаем сохранённые записи
-  STATE.bookings = loadBookings();
+  // Показываем скелетон пока грузим данные
+  view.innerHTML = `<div class="screen">${skeletonCatalog()}</div>`;
 
   // Обработчики нижней навигации
   bottomNav.querySelectorAll('.nav-item').forEach(item => {
@@ -1206,21 +1378,21 @@ function init() {
     });
   });
 
-  // Показываем скелетон на старте
-  view.innerHTML = `<div class="screen">${skeletonCatalog()}</div>`;
+  // Загружаем каталог и записи параллельно
+  const [, bookings] = await Promise.all([
+    loadCatalog(),
+    loadBookings(),
+  ]);
+  STATE.bookings = bookings;
 
-  // Запускаем приложение: онбординг (первый раз) или сразу каталог
-  setTimeout(() => {
-    const isFirstLaunch = !localStorage.getItem(ONBOARDING_KEY);
-    if (isFirstLaunch) {
-      _render('onboarding', {}, 'forward');
-    } else {
-      _render('catalog', {}, 'forward');
-      // Оффер показывается только в каталоге, не при онбординге
-      setTimeout(showOffer, 600);
-    }
-  }, 600);
+  // Запускаем приложение
+  const isFirstLaunch = !localStorage.getItem(ONBOARDING_KEY);
+  if (isFirstLaunch) {
+    _render('onboarding', {}, 'forward');
+  } else {
+    _render('catalog', {}, 'forward');
+    setTimeout(showOffer, 600);
+  }
 }
 
-// Запуск после загрузки DOM
 document.addEventListener('DOMContentLoaded', init);
