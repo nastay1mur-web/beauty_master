@@ -75,6 +75,11 @@
         <span class="nav-item__icon">👤</span>
         <span>О мастере</span>
       </button>
+      <!-- 4-й таб виден только мастеру — показывается через JS -->
+      <button class="nav-item hidden" id="nav-master" data-screen="master-panel">
+        <span class="nav-item__icon">🔧</span>
+        <span>Панель</span>
+      </button>
     </nav>
 
   </div><!-- /#app -->
@@ -90,6 +95,7 @@
     Запускается по DOMContentLoaded.
   -->
   <script src="js/app.js"></script>
+  <script src="js/master.js"></script>
 
 </body>
 </html>

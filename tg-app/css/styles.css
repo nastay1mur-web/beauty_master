@@ -1435,3 +1435,249 @@ input, textarea { user-select: text; -webkit-user-select: text; }
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+
+/* ────────────────────────────────────────────────────────────
+   11. ПАНЕЛЬ МАСТЕРА
+──────────────────────────────────────────────────────────── */
+
+/* Шапка с переходами между разделами */
+.master-header-nav {
+  padding: 16px 16px 8px;
+}
+.master-header-nav__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--tg-text);
+  margin-bottom: 10px;
+}
+.master-header-nav__links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.master-link {
+  background: var(--tg-secondary);
+  border: none;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--tg-hint);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.master-link.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Карточки записей мастера */
+.master-bookings-list {
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.master-booking-card {
+  background: var(--tg-secondary);
+  border-radius: 14px;
+  padding: 14px;
+  border-left: 3px solid var(--tg-hint);
+}
+.master-booking-card--confirmed { border-left-color: var(--accent); }
+.master-booking-card--done      { border-left-color: #4CAF50; }
+.master-booking-card--cancelled { border-left-color: #ef5350; }
+
+.master-booking-card__time {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--tg-text);
+  margin-bottom: 2px;
+}
+.master-booking-card__service {
+  font-size: 14px;
+  color: var(--tg-text);
+  margin-bottom: 2px;
+}
+.master-booking-card__client {
+  font-size: 13px;
+  color: var(--tg-hint);
+  margin-bottom: 8px;
+}
+.master-booking-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.master-booking-card__price {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.master-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.master-action-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 6px;
+  border: none;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.master-action-btn--done   { background: #e8f5e9; color: #2e7d32; }
+.master-action-btn--noshow { background: #fff3e0; color: #e65100; }
+.master-action-btn--cancel { background: #fce4ec; color: #c62828; }
+
+/* График работы */
+.master-schedule-section {
+  padding: 0 16px 16px;
+}
+.master-schedule-section__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tg-hint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.weekly-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--tg-secondary);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--tg-bg);
+}
+.schedule-row:last-child { border-bottom: none; }
+
+.schedule-row__day {
+  width: 28px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--tg-text);
+  flex-shrink: 0;
+}
+.schedule-row__status {
+  flex: 1;
+  font-size: 13px;
+}
+.schedule-row__status.on  { color: var(--tg-text); }
+.schedule-row__status.off { color: var(--tg-hint); }
+.schedule-row__edit {
+  background: none;
+  border: 1px solid var(--tg-hint);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--tg-hint);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Форма редактирования дня */
+.schedule-edit-form {
+  background: var(--tg-bg);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--tg-secondary);
+}
+
+/* Исключения дат */
+.date-overrides {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.date-override-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--tg-secondary);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.date-override-item__date {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--tg-text);
+}
+.date-override-item__status {
+  font-size: 13px;
+  color: var(--tg-hint);
+}
+.date-override-item__del {
+  background: none;
+  border: none;
+  color: #ef5350;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* Форма добавления исключения */
+.master-override-form {
+  margin: 0 16px;
+  background: var(--tg-secondary);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+/* Настройки профиля */
+.master-settings {
+  padding-bottom: 100px;
+}
+
+/* Общие компоненты форм */
+.form-field {
+  margin-bottom: 14px;
+}
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tg-hint);
+  margin-bottom: 5px;
+}
+.form-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--tg-secondary);
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  font-size: 15px;
+  color: var(--tg-text);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+.form-input:focus {
+  border-color: var(--accent);
+}
+.form-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+#settings-form {
+  padding: 0 16px;
+}

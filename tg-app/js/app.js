@@ -47,6 +47,7 @@ const STATE = {
 
   bookings: [],         // сохранённые записи
   slots: {},            // кэш слотов: { 'YYYY-MM-DD': [{time, busy}] }
+  isMaster: false,      // true если текущий пользователь — мастер
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -262,6 +263,9 @@ function _getScreenHTML(screen, params) {
     case 'booking-success': return renderBookingSuccess();
     case 'my-bookings':     return renderMyBookings();
     case 'about':           return renderAbout();
+    case 'master-panel':    return renderMasterPanel();
+    case 'master-schedule': return renderMasterSchedule();
+    case 'master-settings': return renderMasterSettings();
     default:                return '<div style="padding:20px">Экран не найден</div>';
   }
 }
@@ -274,8 +278,11 @@ function _attachHandlers(screen, el) {
     case 'booking-date':    attachBookingDateHandlers(el);     break;
     case 'booking-confirm': attachBookingConfirmHandlers(el);  break;
     case 'booking-success': attachSuccessHandlers(el);         break;
-    case 'my-bookings':     attachMyBookingsHandlers(el);      break;
-    case 'about':           attachAboutHandlers(el);           break;
+    case 'my-bookings':     attachMyBookingsHandlers(el);       break;
+    case 'about':           attachAboutHandlers(el);            break;
+    case 'master-panel':    attachMasterPanelHandlers(el);      break;
+    case 'master-schedule': attachMasterScheduleHandlers(el);   break;
+    case 'master-settings': attachMasterSettingsHandlers(el);   break;
   }
 }
 
@@ -1378,12 +1385,23 @@ async function init() {
     });
   });
 
-  // Загружаем каталог и записи параллельно
-  const [, bookings] = await Promise.all([
+  // Загружаем каталог, записи и проверяем права мастера параллельно
+  const initData = window.Telegram?.WebApp?.initData || '';
+  const [, bookings, masterCheck] = await Promise.all([
     loadCatalog(),
     loadBookings(),
+    fetch('/api/master/check', {
+      headers: { 'X-Telegram-Init-Data': initData },
+    }).then(r => r.json()).catch(() => ({ isMaster: false })),
   ]);
-  STATE.bookings = bookings;
+
+  STATE.bookings  = bookings;
+  STATE.isMaster  = masterCheck.isMaster === true;
+
+  // Показываем вкладку мастера если это мастер
+  if (STATE.isMaster) {
+    document.getElementById('nav-master')?.classList.remove('hidden');
+  }
 
   // Запускаем приложение
   const isFirstLaunch = !localStorage.getItem(ONBOARDING_KEY);
