@@ -448,50 +448,47 @@ async function saveBooking() {
   const user = TG.getUser();
 
   if (user && user.id) {
-    try {
-      const body = {
-        telegram_user_id:    user.id,
-        telegram_first_name: user.first_name,
-        telegram_last_name:  user.last_name  || null,
-        telegram_username:   user.username   || null,
-        service_id:          service.id,
-        service_name:        service.name,
-        service_price:       service.price,
-        service_duration:    service.duration,
-        booking_date:        date,
-        start_time:          time,
-        end_time:            endTime,
-      };
+    // Пользователь в Telegram — сохраняем через API, не глушим ошибки
+    const body = {
+      telegram_user_id:    user.id,
+      telegram_first_name: user.first_name,
+      telegram_last_name:  user.last_name  || null,
+      telegram_username:   user.username   || null,
+      service_id:          service.id,
+      service_name:        service.name,
+      service_price:       service.price,
+      service_duration:    service.duration,
+      booking_date:        date,
+      start_time:          time,
+      end_time:            endTime,
+    };
 
-      const result = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      });
+    const r = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-      // Добавляем нормализованную запись в STATE
-      const saved = {
-        ...result,
-        serviceId:   result.service_id,
-        serviceName: result.service_name,
-        date:        result.booking_date,
-        time:        result.start_time,
-        endTime:     result.end_time,
-        price:       result.service_price,
-      };
-      STATE.bookings.unshift(saved);
-      // Сбрасываем кэш слотов для этой даты (слот занят)
-      delete STATE.slots[date];
-      return;
-    } catch (err) {
-      console.warn('Save booking via API failed:', err.message);
+    if (!r.ok) {
+      const errData = await r.json().catch(() => ({}));
+      throw new Error(errData.error || `Ошибка сервера (${r.status})`);
     }
+
+    const result = await r.json();
+    STATE.bookings.unshift({
+      ...result,
+      serviceId:   result.service_id,
+      serviceName: result.service_name,
+      date:        result.booking_date,
+      time:        result.start_time,
+      endTime:     result.end_time,
+      price:       result.service_price,
+    });
+    delete STATE.slots[date];
+    return;
   }
 
-  // Fallback: localStorage
+  // Fallback: localStorage (только в браузере без Telegram)
   const newBooking = {
     id:          Date.now().toString(),
     serviceId:   service.id,
